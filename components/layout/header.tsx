@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { MessageSquare, LogOut, UserIcon, Plus, ChefHat } from "lucide-react"
 import { useRouter } from "next/navigation"
+import { ThemeToggle } from "@/components/theme-toggle"
 
 export function Header() {
   const { user, profile, userRole, signOut } = useUser()
@@ -99,6 +100,7 @@ export function Header() {
                   <DropdownMenuItem onClick={() => signOut()} className="flex items-center gap-2">
                     <LogOut className="h-4 w-4" />
                     <span>Выйти</span>
+                    
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -108,6 +110,7 @@ export function Header() {
               <Link href="/login">Войти</Link>
             </Button>
           )}
+          <ThemeToggle />
         </div>
       </div>
     </header>
