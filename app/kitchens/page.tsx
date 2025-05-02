@@ -38,6 +38,26 @@ export default function KitchensPage() {
   const [hasPhotoZone, setHasPhotoZone] = useState(false)
   const [hasDishwasher, setHasDishwasher] = useState(false)
   const [cities, setCities] = useState<string[]>([])
+  
+
+  const sosihui = async() => {
+    // let query = supabase
+    //     .from("kitchens")
+    //     .select(
+    //       `
+    //       *,
+    //       kitchen_images!inner (
+    //         image_url,
+    //         is_primary
+    //       )
+    //     `,
+    //       { count: "exact" },
+    //     )
+    //     .order("created_at", { ascending: false })
+    //     .limit(20)
+    let { data: kitchens, error } = await supabase.from('kitchens').select('*')
+    console.log(kitchens, error)
+  }
 
   // Debounced fetch function to prevent too many requests
   const debouncedFetch = useCallback(
@@ -160,8 +180,8 @@ export default function KitchensPage() {
             primaryImage,
           }
         }) || []
-
-      setKitchens(processedData)
+      let { data: kitchens} = await supabase.from('kitchens').select('*')
+      setKitchens(kitchens)
     } catch (error) {
       console.error("Error fetching kitchens:", error)
       showError("Не удалось загрузить список кухонь")
@@ -406,7 +426,7 @@ export default function KitchensPage() {
                 <ChefHat className="h-12 w-12 mx-auto text-muted-foreground" />
                 <h2 className="text-xl font-bold mt-4">Кухни не найдены</h2>
                 <p className="text-muted-foreground mt-2">Попробуйте изменить параметры поиска или сбросить фильтры</p>
-                <Button onClick={handleClearFilters} className="mt-4">
+                <Button onClick={sosihui} className="mt-4">
                   Сбросить фильтры
                 </Button>
               </div>
