@@ -133,16 +133,49 @@ export const UserProvider = ({ children }: { children: React.ReactNode }) => {
 
   const signOut = async () => {
     try {
-      await supabase.auth.signOut()
-      clearSupabaseClient() // Clear the client instance
-      setUser(null)
-      setProfile(null)
-      router.push("/")
-      router.refresh()
+      // 1. Выход через Supabase
+      // await supabase.auth.signOut();
+      
+      // 2. Очистка клиента и состояния
+      clearSupabaseClient();
+      setUser(null);
+      setProfile(null);
+  
+      // 3. Очистка всех хранилищ
+      // LocalStorage и SessionStorage
+      localStorage.clear();
+      sessionStorage.clear();
+  
+      // 4. Очистка всех cookies
+      if (typeof document !== 'undefined') {
+        // Основные cookies аутентификации Supabase
+        const supabaseCookies = [
+          `sb-${process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/^https?:\/\//, '')}-auth-token`,
+          'sb-access-token',
+          'sb-refresh-token'
+        ];
+  
+        // Удаляем специфичные cookies Supabase
+        supabaseCookies.forEach(cookie => {
+          document.cookie = `${cookie}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+          document.cookie = `${cookie}=; path=/; domain=.${window.location.hostname}; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+        });
+  
+        // Удаляем все остальные cookies для текущего домена
+        document.cookie.split(';').forEach(cookie => {
+          const [name] = cookie.trim().split('=');
+          document.cookie = `${name}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+          document.cookie = `${name}=; path=/; domain=.${window.location.hostname}; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+        });
+      }
+  
+      // 5. Перенаправление и обновление
+      router.push("/");
+      router.refresh();
     } catch (error) {
-      console.error("Error signing out:", error)
+      console.error("Error signing out:", error);
     }
-  }
+  };
 
   return (
     <UserContext.Provider
