@@ -40,28 +40,42 @@ export default function KitchensPage() {
   const [cities, setCities] = useState<string[]>([])
   
 
-  const sosihui = async() => {
-    // let query = supabase
-    //     .from("kitchens")
-    //     .select(
-    //       `
-    //       *,
-    //       kitchen_images!inner (
-    //         image_url,
-    //         is_primary
-    //       )
-    //     `,
-    //       { count: "exact" },
-    //     )
-    //     .order("created_at", { ascending: false })
-    //     .limit(20)
-    let { data: kitchens, error } = await supabase.from('kitchens').select('*')
-    console.log(kitchens, error)
-  }
+  // Отдельный эффект для загрузки городов
+  useEffect(() => {
+    const fetchCities = async () => {
+      console.log("🏙️ Starting cities fetch")
+      try {
+        const { data: citiesData, error: citiesError } = await supabase
+          .from("kitchens")
+          .select("city")
+          .order("city")
+        
+        console.log("Cities data received:", citiesData)
+        
+        if (citiesError) {
+          console.error("❌ Cities fetch error:", citiesError)
+          return
+        }
+
+        if (citiesData) {
+          const uniqueCities = Array.from(new Set(citiesData.map((item) => item.city)))
+            .filter(Boolean)
+            .sort() as string[]
+          console.log("Unique cities found:", uniqueCities)
+          setCities(uniqueCities)
+        }
+      } catch (error) {
+        console.error("❌ Error in fetchCities:", error)
+      }
+    }
+
+    fetchCities()
+  }, [])
 
   // Debounced fetch function to prevent too many requests
   const debouncedFetch = useCallback(
     debounce(() => {
+      console.log("🔄 debouncedFetch called")
       fetchKitchens()
     }, 300),
     [
@@ -78,124 +92,109 @@ export default function KitchensPage() {
   )
 
   useEffect(() => {
+    console.log("🔍 useEffect for debouncedFetch mounted")
     debouncedFetch()
     return () => {
+      console.log("🧹 useEffect cleanup - canceling debouncedFetch")
       debouncedFetch.cancel()
     }
   }, [debouncedFetch])
 
+  useEffect(() => {
+    console.log("🚀 Initial useEffect mounted")
+    fetchKitchens()
+  }, [])
+
   const fetchKitchens = async () => {
+    console.log("📥 fetchKitchens started")
     setLoading(true)
 
     try {
-      // First, fetch all cities for the filter if needed
-      if (cities.length === 0) {
-        const { data: citiesData } = await supabase.from("kitchens").select("city").order("city")
+      console.log("🔍 Building query with filters:", {
+        selectedCategory,
+        selectedCity,
+        selectedType,
+        priceRange,
+        areaRange,
+        hasProjector,
+        hasPhotoZone,
+        hasDishwasher,
+        searchQuery
+      })
 
-        if (citiesData) {
-          const uniqueCities = Array.from(new Set(citiesData.map((item) => item.city)))
-            .filter(Boolean)
-            .sort() as string[]
-          setCities(uniqueCities)
-        }
-      }
-
-      // Build the query with pagination
-      let query = supabase
+      // Сначала делаем простой запрос без фильтров
+      console.log("📡 Executing initial query...")
+      const { data: initialData, error: initialError } = await supabase
         .from("kitchens")
-        .select(
-          `
-          *,
-          kitchen_images!inner (
-            image_url,
-            is_primary
-          )
-        `,
-          { count: "exact" },
-        )
-        .order("created_at", { ascending: false })
+        .select("*")
         .limit(20)
 
-      // Apply filters
-      if (selectedCategory && selectedCategory !== "all") {
-        query = query.eq("category", selectedCategory)
+      console.log("📦 Initial query result:", { initialData, initialError })
+
+      if (initialError) {
+        console.error("❌ Initial query error:", initialError)
+        throw initialError
       }
 
-      if (selectedCity && selectedCity !== "all") {
-        query = query.eq("city", selectedCity)
+      if (!initialData || initialData.length === 0) {
+        console.log("ℹ️ No kitchens found")
+        setKitchens([])
+        return
       }
 
-      if (selectedType && selectedType !== "all") {
-        query = query.eq("kitchen_type", selectedType)
+      // Затем получаем изображения для найденных кухонь
+      console.log("🖼️ Fetching images for kitchens...")
+      const kitchenIds = initialData.map(kitchen => kitchen.id)
+      const { data: imagesData, error: imagesError } = await supabase
+        .from("kitchen_images")
+        .select("*")
+        .in("kitchen_id", kitchenIds)
+
+      console.log("📸 Images data:", imagesData)
+
+      if (imagesError) {
+        console.error("❌ Images fetch error:", imagesError)
       }
 
-      if (priceRange[0] > 0) {
-        query = query.gte("price_per_hour", priceRange[0])
-      }
+      // Обрабатываем данные
+      console.log("🔄 Processing data...")
+      const processedData = initialData.map((kitchen) => {
+        console.log("🍳 Processing kitchen:", kitchen.id)
+        
+        // Находим изображения для текущей кухни
+        const kitchenImages = imagesData?.filter(img => img.kitchen_id === kitchen.id) || []
+        
+        // Находим основное изображение или берем первое
+        const primaryImage = kitchenImages.find(img => img.is_primary)?.image_url ||
+                            kitchenImages[0]?.image_url ||
+                            "/placeholder.svg?height=200&width=300"
 
-      if (priceRange[1] < 10000) {
-        query = query.lte("price_per_hour", priceRange[1])
-      }
+        return {
+          ...kitchen,
+          primaryImage,
+          kitchen_images: kitchenImages
+        }
+      })
 
-      if (areaRange[0] > 0) {
-        query = query.gte("area_sqm", areaRange[0])
-      }
-
-      if (areaRange[1] < 200) {
-        query = query.lte("area_sqm", areaRange[1])
-      }
-
-      if (hasProjector) {
-        query = query.eq("has_projector", true)
-      }
-
-      if (hasPhotoZone) {
-        query = query.eq("has_photo_zone", true)
-      }
-
-      if (hasDishwasher) {
-        query = query.eq("has_dishwasher", true)
-      }
-
-      if (searchQuery) {
-        query = query.or(
-          `title.ilike.%${searchQuery}%,description.ilike.%${searchQuery}%,address.ilike.%${searchQuery}%`,
-        )
-      }
-
-      const { data, error } = await query
-
-      if (error) throw error
-
-      // Process the data
-      const processedData =
-        data?.map((kitchen) => {
-          const primaryImage =
-            kitchen.kitchen_images?.find((img: any) => img.is_primary)?.image_url ||
-            kitchen.kitchen_images?.[0]?.image_url ||
-            "/placeholder.svg?height=200&width=300"
-
-          return {
-            ...kitchen,
-            primaryImage,
-          }
-        }) || []
-      let { data: kitchens} = await supabase.from('kitchens').select('*')
-      setKitchens(kitchens)
+      console.log("✅ Processed data:", processedData)
+      setKitchens(processedData)
     } catch (error) {
-      console.error("Error fetching kitchens:", error)
+      console.error("❌ Error in fetchKitchens:", error)
       showError("Не удалось загрузить список кухонь")
     } finally {
+      console.log("🏁 fetchKitchens completed")
       setLoading(false)
     }
   }
 
   const handleSearch = (e: React.FormEvent) => {
+    console.log("🔍 handleSearch called")
     e.preventDefault()
     debouncedFetch()
   }
 
   const handleClearFilters = () => {
+    console.log("🧹 handleClearFilters called")
     setSelectedCategory("")
     setSelectedCity("")
     setSelectedType("")
@@ -210,7 +209,6 @@ export default function KitchensPage() {
   return (
     <div className="min-h-screen flex flex-col pb-16 md:pb-0">
       <Header />
-
       <main className="flex-1 py-8">
         <h1 className="text-3xl font-bold mb-8">Поиск кухонь</h1>
 
@@ -426,7 +424,7 @@ export default function KitchensPage() {
                 <ChefHat className="h-12 w-12 mx-auto text-muted-foreground" />
                 <h2 className="text-xl font-bold mt-4">Кухни не найдены</h2>
                 <p className="text-muted-foreground mt-2">Попробуйте изменить параметры поиска или сбросить фильтры</p>
-                <Button onClick={sosihui} className="mt-4">
+                <Button onClick={handleClearFilters} className="mt-4">
                   Сбросить фильтры
                 </Button>
               </div>
