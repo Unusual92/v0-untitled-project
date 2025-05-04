@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { use } from "react"
 import { useRouter } from "next/navigation"
 import { useUser } from "@/lib/user-context"
 import { getSupabaseClient } from "@/lib/supabase/client"
@@ -24,15 +25,33 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 import { Loader2, MapPin, Clock, CalendarIcon, MessageSquare, CheckCircle, XCircle } from "lucide-react"
+import type { Database } from "@/lib/database.types"
 
-export default function BookingDetailPage({ params }: { params: { id: string } }) {
+type KitchenImage = {
+  id: string
+  kitchen_id: string
+  image_data: string
+  is_primary: boolean
+}
+
+type Kitchen = Database["public"]["Tables"]["kitchens"]["Row"] & {
+  kitchen_images: KitchenImage[]
+  primaryImage?: string
+}
+
+type PageParams = {
+  id: string
+}
+
+export default function BookingDetailPage({ params }: { params: Promise<PageParams> }) {
   const { user, userRole } = useUser()
   const router = useRouter()
   const { toast } = useToast()
   const supabase = getSupabaseClient()
+  const { id: bookingId } = use(params)
 
   const [booking, setBooking] = useState<any>(null)
-  const [kitchen, setKitchen] = useState<any>(null)
+  const [kitchen, setKitchen] = useState<Kitchen | null>(null)
   const [owner, setOwner] = useState<any>(null)
   const [renter, setRenter] = useState<any>(null)
   const [loading, setLoading] = useState(true)
@@ -48,33 +67,81 @@ export default function BookingDetailPage({ params }: { params: { id: string } }
       setLoading(true)
 
       try {
+        // Get the current session to ensure we have a valid auth token
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+        
+        if (sessionError) {
+          console.error("Session error:", sessionError)
+          throw new Error("Ошибка аутентификации. Пожалуйста, войдите снова.")
+        }
+
+        if (!session) {
+          throw new Error("Сессия не найдена. Пожалуйста, войдите снова.")
+        }
+
         // Fetch booking details
         const { data: bookingData, error: bookingError } = await supabase
           .from("bookings")
           .select("*")
-          .eq("id", params.id)
+          .eq("id", bookingId)
           .single()
 
-        if (bookingError) throw bookingError
+        if (bookingError) {
+          console.error("Booking fetch error:", bookingError)
+          throw new Error(bookingError.message)
+        }
+
+        if (!bookingData) {
+          throw new Error("Бронирование не найдено")
+        }
 
         setBooking(bookingData)
 
         // Fetch kitchen details
         const { data: kitchenData, error: kitchenError } = await supabase
           .from("kitchens")
-          .select(`
-            *,
-            kitchen_images (
-              image_url,
-              is_primary
-            )
-          `)
+          .select("*")
           .eq("id", bookingData.kitchen_id)
           .single()
 
-        if (kitchenError) throw kitchenError
+        if (kitchenError) {
+          console.error("Kitchen fetch error:", kitchenError)
+          throw new Error(kitchenError.message)
+        }
 
-        setKitchen(kitchenData)
+        if (!kitchenData) {
+          throw new Error("Кухня не найдена")
+        }
+
+        // Fetch kitchen images
+        const { data: imagesData, error: imagesError } = await supabase
+          .from("kitchen_images")
+          .select("*")
+          .eq("kitchen_id", kitchenData.id)
+
+        if (imagesError) {
+          console.error("Images fetch error:", imagesError)
+          throw new Error(imagesError.message)
+        }
+
+        // Process kitchen images
+        const images = imagesData || []
+        const primaryImageObj = images.find((img: KitchenImage) => img.is_primary) || images[0]
+
+        let primaryImage = "/placeholder.svg"
+        if (primaryImageObj && typeof primaryImageObj.image_data === "string") {
+          if (primaryImageObj.image_data.startsWith("data:image")) {
+            primaryImage = primaryImageObj.image_data
+          } else {
+            primaryImage = `data:image/jpeg;base64,${primaryImageObj.image_data}`
+          }
+        }
+
+        setKitchen({
+          ...kitchenData,
+          primaryImage,
+          kitchen_images: images
+        })
 
         // Fetch owner details
         const { data: ownerData, error: ownerError } = await supabase
@@ -83,7 +150,10 @@ export default function BookingDetailPage({ params }: { params: { id: string } }
           .eq("id", kitchenData.owner_id)
           .single()
 
-        if (ownerError) throw ownerError
+        if (ownerError) {
+          console.error("Owner fetch error:", ownerError)
+          throw new Error(ownerError.message)
+        }
 
         setOwner(ownerData)
 
@@ -94,7 +164,10 @@ export default function BookingDetailPage({ params }: { params: { id: string } }
           .eq("id", bookingData.renter_id)
           .single()
 
-        if (renterError) throw renterError
+        if (renterError) {
+          console.error("Renter fetch error:", renterError)
+          throw new Error(renterError.message)
+        }
 
         setRenter(renterData)
 
@@ -111,7 +184,7 @@ export default function BookingDetailPage({ params }: { params: { id: string } }
         console.error("Error fetching booking details:", error)
         toast({
           title: "Ошибка загрузки",
-          description: "Не удалось загрузить информацию о бронировании",
+          description: error instanceof Error ? error.message : "Не удалось загрузить информацию о бронировании",
           variant: "destructive",
         })
         router.push("/")
@@ -121,7 +194,7 @@ export default function BookingDetailPage({ params }: { params: { id: string } }
     }
 
     fetchBookingDetails()
-  }, [user, params.id, supabase, toast, router])
+  }, [user, bookingId, supabase, toast, router])
 
   const updateBookingStatus = async (status: string) => {
     if (!booking) return
@@ -224,10 +297,6 @@ export default function BookingDetailPage({ params }: { params: { id: string } }
   const canCancel = (isOwner || isRenter) && (booking.status === "pending" || booking.status === "confirmed")
   const startTime = new Date(booking.start_time)
   const endTime = new Date(booking.end_time)
-  const primaryImage =
-    kitchen.kitchen_images?.find((img: any) => img.is_primary)?.image_url ||
-    kitchen.kitchen_images?.[0]?.image_url ||
-    "/placeholder.svg?height=200&width=300"
 
   return (
     <div className="min-h-screen flex flex-col pb-16 md:pb-0">
@@ -292,7 +361,7 @@ export default function BookingDetailPage({ params }: { params: { id: string } }
                 <div className="flex flex-col sm:flex-row gap-4">
                   <div className="w-full sm:w-1/3 h-48 sm:h-auto relative">
                     <img
-                      src={primaryImage || "/placeholder.svg"}
+                      src={kitchen.primaryImage || "/placeholder.svg"}
                       alt={kitchen.title}
                       className="w-full h-full object-cover rounded-md"
                     />
