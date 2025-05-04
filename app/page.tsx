@@ -36,11 +36,11 @@ export default function Home() {
               </div>
               <div className="mx-auto lg:mx-0 relative">
                 <Image
-                  src="/placeholder.svg?height=400&width=600"
+                  src="https://static.insales-cdn.com/r/73i_luvwwzU/rs:fit:1408:0:1/plain/files/1/1032/32670728/original/blob_60b7f5810e443372bbd7faa1c1403d69."
                   alt="Modern kitchen"
                   width={600}
-                  height={400}
-                  className="rounded-lg object-cover"
+                  height={500}
+                  className="rounded-lg object-cover" 
                   priority
                 />
               </div>
@@ -97,7 +97,7 @@ export default function Home() {
             <div className="grid gap-6 md:grid-cols-2">
               <Link href="/kitchens?category=events" className="group relative overflow-hidden rounded-lg">
                 <Image
-                  src="/placeholder.svg?height=300&width=600"
+                  src="https://kupil-kvartiru.ru/wp-content/uploads/2021/12/47-Espresso-Kitchen-Cabinets-ESPRESSO-SHAKER-Sleek-Modern-1-683x1024.jpg"
                   alt="Event kitchen"
                   width={600}
                   height={300}
@@ -112,7 +112,7 @@ export default function Home() {
               </Link>
               <Link href="/kitchens?category=professional" className="group relative overflow-hidden rounded-lg">
                 <Image
-                  src="/placeholder.svg?height=300&width=600"
+                  src="https://i.pinimg.com/736x/22/09/67/22096740e2eb9e6e4d0e971ee08f7061.jpg"
                   alt="Professional kitchen"
                   width={600}
                   height={300}
