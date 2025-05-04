@@ -11,6 +11,18 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/componen
 import { Separator } from "@/components/ui/separator"
 import { useToast } from "@/components/ui/use-toast"
 import { Loader2, MapPin, Clock, CalendarIcon } from "lucide-react"
+import type { Database } from "@/lib/database.types"
+
+type KitchenImage = {
+  id: string
+  image_data: string
+  is_primary: boolean
+}
+
+type Kitchen = Database["public"]["Tables"]["kitchens"]["Row"] & {
+  kitchen_images: KitchenImage[]
+  primaryImage?: string
+}
 
 export default function NewBookingPage() {
   const { user } = useUser()
@@ -23,7 +35,7 @@ export default function NewBookingPage() {
   const startTimeParam = searchParams.get("start")
   const endTimeParam = searchParams.get("end")
 
-  const [kitchen, setKitchen] = useState<any>(null)
+  const [kitchen, setKitchen] = useState<Kitchen | null>(null)
   const [startTime, setStartTime] = useState<Date | null>(startTimeParam ? new Date(startTimeParam) : null)
   const [endTime, setEndTime] = useState<Date | null>(endTimeParam ? new Date(endTimeParam) : null)
   const [loading, setLoading] = useState(true)
@@ -55,21 +67,46 @@ export default function NewBookingPage() {
           .select(`
             *,
             kitchen_images (
-              image_url,
+              id,
+              image_data,
               is_primary
             )
           `)
           .eq("id", kitchenId)
           .single()
 
-        if (kitchenError) throw kitchenError
+        if (kitchenError) {
+          console.error("Kitchen fetch error:", kitchenError)
+          throw new Error(kitchenError.message)
+        }
 
-        setKitchen(kitchenData)
+        if (!kitchenData) {
+          throw new Error("Кухня не найдена")
+        }
+
+        // Обрабатываем изображения
+        const kitchenImages = kitchenData.kitchen_images || []
+        const primaryImageObj = kitchenImages.find((img: KitchenImage) => img.is_primary) || kitchenImages[0]
+
+        let primaryImage = "/placeholder.svg?height=200&width=300"
+        if (primaryImageObj && typeof primaryImageObj.image_data === "string") {
+          if (primaryImageObj.image_data.startsWith("data:image")) {
+            primaryImage = primaryImageObj.image_data
+          } else {
+            primaryImage = `data:image/jpeg;base64,${primaryImageObj.image_data}`
+          }
+        }
+
+        setKitchen({
+          ...kitchenData,
+          primaryImage,
+          kitchen_images: kitchenImages
+        })
       } catch (error) {
         console.error("Error fetching kitchen details:", error)
         toast({
           title: "Ошибка загрузки",
-          description: "Не удалось загрузить информацию о кухне",
+          description: error instanceof Error ? error.message : "Не удалось загрузить информацию о кухне",
           variant: "destructive",
         })
         router.push("/kitchens")
@@ -89,14 +126,33 @@ export default function NewBookingPage() {
   }
 
   const handleCreateBooking = async () => {
-    if (!user || !kitchen || !startTime || !endTime) return
+    if (!user || !kitchen || !startTime || !endTime) {
+      toast({
+        title: "Ошибка",
+        description: "Не все необходимые данные заполнены",
+        variant: "destructive",
+      })
+      return
+    }
 
     setCreating(true)
 
     try {
       const totalPrice = calculateTotalPrice()
 
-      // Create booking
+      // Get the current session to ensure we have a valid auth token
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+      
+      if (sessionError) {
+        console.error("Session error:", sessionError)
+        throw new Error("Ошибка аутентификации. Пожалуйста, войдите снова.")
+      }
+
+      if (!session) {
+        throw new Error("Сессия не найдена. Пожалуйста, войдите снова.")
+      }
+
+      // Create booking with explicit auth token
       const { data: bookingData, error: bookingError } = await supabase
         .from("bookings")
         .insert({
@@ -109,7 +165,14 @@ export default function NewBookingPage() {
         })
         .select()
 
-      if (bookingError) throw bookingError
+      if (bookingError) {
+        console.error("Booking creation error:", bookingError)
+        throw new Error(bookingError.message)
+      }
+
+      if (!bookingData || bookingData.length === 0) {
+        throw new Error("Не удалось создать бронирование: пустой ответ от сервера")
+      }
 
       toast({
         title: "Бронирование создано",
@@ -121,7 +184,7 @@ export default function NewBookingPage() {
       console.error("Error creating booking:", error)
       toast({
         title: "Ошибка бронирования",
-        description: "Не удалось создать бронирование",
+        description: error instanceof Error ? error.message : "Не удалось создать бронирование",
         variant: "destructive",
       })
     } finally {
@@ -159,10 +222,6 @@ export default function NewBookingPage() {
 
   const totalPrice = calculateTotalPrice()
   const hours = Math.max(1, Math.ceil((endTime.getTime() - startTime.getTime()) / (1000 * 60 * 60)))
-  const primaryImage =
-    kitchen.kitchen_images?.find((img: any) => img.is_primary)?.image_url ||
-    kitchen.kitchen_images?.[0]?.image_url ||
-    "/placeholder.svg?height=200&width=300"
 
   return (
     <div className="min-h-screen flex flex-col pb-16 md:pb-0">
@@ -182,7 +241,7 @@ export default function NewBookingPage() {
                 <div className="flex flex-col sm:flex-row gap-4">
                   <div className="w-full sm:w-1/3 h-48 sm:h-auto relative">
                     <img
-                      src={primaryImage || "/placeholder.svg"}
+                      src={kitchen.primaryImage || "/placeholder.svg"}
                       alt={kitchen.title}
                       className="w-full h-full object-cover rounded-md"
                     />
