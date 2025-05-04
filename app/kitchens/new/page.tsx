@@ -1,7 +1,5 @@
 "use client"
-
 import React from "react"
-
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { useUser } from "@/lib/user-context"
@@ -43,7 +41,6 @@ export default function NewKitchenPage() {
     if (e.target.files) {
       const fileArray = Array.from(e.target.files)
       setImages(fileArray)
-
       // Create preview URLs for the images
       const newImageUrls = fileArray.map((file) => URL.createObjectURL(file))
       setImagePreviewUrls(newImageUrls)
@@ -52,13 +49,11 @@ export default function NewKitchenPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-
     if (!user) {
       showError("Пожалуйста, войдите в систему для добавления кухни")
       router.push("/login")
       return
     }
-
     if (userRole !== "owner") {
       showError("Только владельцы могут добавлять кухни")
       return
@@ -71,7 +66,6 @@ export default function NewKitchenPage() {
     }
 
     setLoading(true)
-
     try {
       // Insert kitchen
       const { data: kitchenData, error: kitchenError } = await supabase
@@ -97,34 +91,29 @@ export default function NewKitchenPage() {
 
       const kitchenId = kitchenData[0].id
 
-      // Upload images if any
+      // Save each image as binary in kitchen_images table
       if (images.length > 0) {
         for (let i = 0; i < images.length; i++) {
           const image = images[i]
-          const fileExt = image.name.split(".").pop()
-          const fileName = `${kitchenId}/${Date.now()}-${i}.${fileExt}`
 
-          // Upload image to storage
-          const { error: uploadError } = await supabase.storage.from("kitchen-images").upload(fileName, image)
+          // Convert image to base64 or ArrayBuffer
+          const arrayBuffer = await image.arrayBuffer()
+          const uint8Array = new Uint8Array(arrayBuffer)
 
-          if (uploadError) throw uploadError
-
-          // Get public URL
-          const { data: urlData } = supabase.storage.from("kitchen-images").getPublicUrl(fileName)
-
-          // Insert image record
-          const { error: imageError } = await supabase.from("kitchen_images").insert({
-            kitchen_id: kitchenId,
-            image_url: urlData.publicUrl,
-            is_primary: i === 0, // First image is primary
-          })
+          // Send binary data to Supabase
+          const { error: imageError } = await supabase
+            .from("kitchen_images")
+            .insert({
+              kitchen_id: kitchenId,
+              image_data: uint8Array,
+              is_primary: i === 0,
+            })
 
           if (imageError) throw imageError
         }
       }
 
       showSuccess("Ваша кухня успешно добавлена")
-
       router.push(`/kitchens/${kitchenId}`)
     } catch (error) {
       console.error("Error adding kitchen:", error)
@@ -166,10 +155,8 @@ export default function NewKitchenPage() {
   return (
     <div className="min-h-screen flex flex-col pb-16 md:pb-0">
       <Header />
-
       <main className="flex-1 py-8">
         <h1 className="text-3xl font-bold mb-8">Добавить новую кухню</h1>
-
         <form onSubmit={handleSubmit}>
           <div className="grid gap-8 md:grid-cols-[2fr_1fr]">
             <div className="space-y-8">
@@ -189,7 +176,6 @@ export default function NewKitchenPage() {
                       required
                     />
                   </div>
-
                   <div className="space-y-2">
                     <Label htmlFor="description">Описание</Label>
                     <Textarea
@@ -200,7 +186,6 @@ export default function NewKitchenPage() {
                       rows={5}
                     />
                   </div>
-
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div className="space-y-2">
                       <Label htmlFor="address">Адрес *</Label>
@@ -223,7 +208,6 @@ export default function NewKitchenPage() {
                       />
                     </div>
                   </div>
-
                   <div className="space-y-2">
                     <Label htmlFor="district">Район</Label>
                     <Input
@@ -268,7 +252,6 @@ export default function NewKitchenPage() {
                       />
                     </div>
                   </div>
-
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div className="space-y-2">
                       <Label htmlFor="kitchenType">Тип кухни *</Label>
@@ -296,7 +279,6 @@ export default function NewKitchenPage() {
                       </Select>
                     </div>
                   </div>
-
                   <div className="space-y-3 pt-2">
                     <Label>Дополнительные опции</Label>
                     <div className="flex items-center space-x-2">
@@ -347,7 +329,6 @@ export default function NewKitchenPage() {
                       Первая фотография будет использоваться как основная. Рекомендуемый размер: 1200x800 пикселей.
                     </p>
                   </div>
-
                   {imagePreviewUrls.length > 0 && (
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mt-4">
                       {imagePreviewUrls.map((url, index) => (
